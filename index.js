@@ -18,6 +18,7 @@ const app = express()
 app.use(express.json())
 app.use(morgan(customFormat))
 app.use(cors())
+app.use(express.static('dist'))
 
 
 app.get('/', (req, res) => {
