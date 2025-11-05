@@ -1,9 +1,12 @@
+require('dotenv').config()
+const mongoose = require('mongoose')
 const express = require('express')
 var morgan = require('morgan')
 const cors = require('cors')
 const fs = require('fs');
-const persons = require('./persons.json')
 const PORT = process.env.PORT || 3001
+const Person =  require('./models/person')
+
 
 
 morgan.token('print-post', (req, res) => {
@@ -25,124 +28,126 @@ app.get('/', (req, res) => {
   return res.send('<h1>Server Part 3</h1>')
 })
 
-app.get('/persons', (req, res) => {
-  return res.json(persons)
-})
-
-app.get('/info', (req, res) => {
-  return res.send(`
-    <p>PhoneBook has info for ${persons.length} people</p>
-    <p>${new Date()}</p>
-  `)
-})
-
-app.get('/info/:id', (req, res) => {
-  const data = persons.filter(p => p.id.toString() === req.params.id)
-  if (data && data.length > 0) {
-    return res.status(200).json(persons.filter(p => p.id.toString() === req.params.id))
-  } else { return res.status(404).end()}
-})
-
-
-function deleteRecordFromJson(id) {
-    try {
-      personsUpdated = persons.filter(p => p.id !== id); 
-
-      if (personsUpdated.length === persons.length) {
-          console.log(`Registro con ID ${id} no encontrado.`);
-          return false;
-      }
-
-      const updatedJson = JSON.stringify(personsUpdated, null, 2); // 'null, 2' para un formato legible (indentación de 2 espacios)
-      fs.writeFileSync('./persons.json', updatedJson, 'utf8');
-
-      console.log(`Registro con ID ${id} eliminado exitosamente.`);
-      return true;
-
-    } catch (error) {
-      console.error('Ocurrió un error al procesar el archivo JSON:', error.message);
-      return false;
-    }
-}
-
-app.delete('/persons/:id', (req, res) => {
-  const deleted = deleteRecordFromJson(Number(req.params.id))
-  if (deleted) {
-    return res.status(204).end()
-  } 
-  return res.status(404).end()
-})
-
-
-function addRecordToJson(newPerson) {
-    try {
-      newPerson.id = Math.floor(Math.random() * 10000)
-      personsUpdated = [...persons, newPerson]
-
-      const updatedJson = JSON.stringify(personsUpdated, null, 2);
-      fs.writeFileSync('./persons.json', updatedJson, 'utf8');
-      return true;
-
-    } catch (error) {
-      console.error('Ocurrió un error al procesar el archivo JSON:', error.message);
-      return false;
-    }
-}
-
-app.post('/persons', (req, res) => {
-  const newPerson = req.body
-  if (!newPerson | !newPerson.name | !newPerson.number) {
-    return res.status(400).json({
-      error: 'Missing fields'
-    }).end()
-  } 
-  if (persons.filter(p => p.name === newPerson.name).length > 0) {
-    return res.status(402).json({
-      error: 'Name is already registered'
-    }).end()
+app.get('/persons', async (req, res) => {
+  try {
+    const persons = await Person.find({})
+    return res.status(200).json(persons)
+  } catch (error) {
+    return res.status(500).json({error: error.message})
   }
-  if (addRecordToJson(newPerson)) {
-    return res.status(200).send(newPerson)
-  }
-  return res.status(403).end()
-
 })
 
-function updateRecordInJson(newPerson) {
-    try {
-      personsUpdated = persons.map(p => 
-        p.id === newPerson.id ? newPerson : p
-      )
-
-      const updatedJson = JSON.stringify(personsUpdated, null, 2);
-      fs.writeFileSync('./persons.json', updatedJson, 'utf8');
-      return true;
-
-    } catch (error) {
-      console.error('Ocurrió un error al procesar el archivo JSON:', error.message);
-      return false;
-    }
-}
-
-app.put('/persons/:id', (req, res) => {
-  const updatedPerson = req.body
-  if (!updatedPerson | !updatedPerson.name | !updatedPerson.number | !updatedPerson.id) {
-    return res.status(400).json({
-      error: 'Missing fields'
+app.get('/info', async (req, res) => {
+  try {
+    const persons = await Person.find({}) 
+    return res.send(`
+      <p>PhoneBook has info for ${persons.length || 0} ${persons.length === 1 ? "person" : "people"}</p>
+      <p>${new Date()}</p>
+    `)
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message
     })
   }
-  if (persons.filter(p => p.id === updatedPerson.id).length < 1) {
-    return res.status(400).json({
-      error: `Person with id ${updatedPerson.id} not found`
+})
+
+app.get('/info/:id', async (req, res) => {
+  try {
+    const data = await Person.findById(req.params.id)
+    if (data) {
+      return res.status(200).json(data)
+    } else { 
+      return res.status(404).end() 
+    }
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message
     })
   }
+})
 
-  if (updateRecordInJson(updatedPerson)) {
+
+app.delete('/persons/:id', async (req, res) => {
+  try {
+    console.log('id ', req.params.id)
+    const deleted = await Person.findByIdAndDelete(req.params.id)
+    if (deleted) {
+      return res.status(204).end()
+    } 
+    return res.status(404).end()
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message
+    })
+  }
+})
+
+
+app.post('/persons', async (req, res) => {
+  try {
+    const newPerson = req.body
+    if (!newPerson | !newPerson.name | !newPerson.number) {
+      return res.status(400).json({
+        error: 'Missing fields'
+      }).end()
+    } 
+    const namePhoneTaken = await Person.find({
+       $or: [ { name : newPerson.name }, { phone : newPerson.number }]
+      })
+    if (namePhoneTaken.length !== 0) {
+      return res.status(402).json({
+        error: 'Name or phone is already registered'
+      }).end()
+    }
+    const newRegister = new Person (newPerson)
+    const saved = await newRegister.save() 
+    return res.status(201).json(saved)
+    
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message
+    })
+  }
+})
+
+
+app.put('/persons/:id', async (req, res) => {
+  try {
+    const updatedPerson = req.body
+    if (!updatedPerson | !updatedPerson.name | !updatedPerson.number | !updatedPerson.id) {
+      return res.status(400).json({
+        error: 'Missing fields'
+      })
+    }
+    const updated = Person.findByIdAndUpdate(updatedPerson.id, updatedPerson, {new : true})
+    
+    if (!updated) {
+      return res.status(400).json({
+        error: `Person with id ${updatedPerson.id} not found`
+      })
+    }
+    
     return res.status(200).send(updatedPerson)
+    
+  } catch (error) {
+    return res.status(500).json({
+      error: error.message
+    })
   }
-  return res.status(400).json({
-    error: 'Something went wrong when updating the register'
-  })
 })
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  } else if (error.name === 'ValidationError') {
+    return response.status(400).json({ error: error.message })  
+  }
+  next(error)
+}
+
+// este debe ser el último middleware cargado, ¡también todas las rutas deben ser registrada antes que esto!
+app.use(errorHandler)
 
 app.listen(PORT, () => console.log("Server running in port ", PORT))
