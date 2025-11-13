@@ -1,18 +1,16 @@
 require('dotenv').config()
-const mongoose = require('mongoose')
 const express = require('express')
 var morgan = require('morgan')
 const cors = require('cors')
-const fs = require('fs');
 const PORT = process.env.PORT || 3001
 const Person =  require('./models/person')
 
 
 
-morgan.token('print-post', (req, res) => {
+morgan.token('print-post', (req, _res) => {
   if (req.method === 'POST') {
     return JSON.stringify(req.body)
-  } 
+  }
   return ''
 })
 const customFormat = ':method :url :status :response-time ms - :res[content-length] :print-post';
@@ -28,18 +26,18 @@ app.get('/', (req, res) => {
   return res.send('<h1>Server Part 3</h1>')
 })
 
-app.get('/persons', async (req, res) => {
+app.get('/persons', async (_req, res) => {
   try {
     const persons = await Person.find({})
     return res.status(200).json(persons)
   } catch (error) {
-    return res.status(500).json({error: error.message})
+    return res.status(500).json( { error: error.message } )
   }
 })
 
 app.get('/info', async (req, res) => {
   try {
-    const persons = await Person.find({}) 
+    const persons = await Person.find({})
     return res.send(`
       <p>PhoneBook has info for ${persons.length || 0} ${persons.length === 1 ? "person" : "people"}</p>
       <p>${new Date()}</p>
@@ -56,13 +54,11 @@ app.get('/info/:id', async (req, res) => {
     const data = await Person.findById(req.params.id)
     if (data) {
       return res.status(200).json(data)
-    } else { 
-      return res.status(404).end() 
+    } else {
+      return res.status(404).end()
     }
   } catch (error) {
-    return res.status(500).json({
-      error: error.message
-    })
+    next(error)
   }
 })
 
@@ -73,7 +69,7 @@ app.delete('/persons/:id', async (req, res) => {
     const deleted = await Person.findByIdAndDelete(req.params.id)
     if (deleted) {
       return res.status(204).end()
-    } 
+    }
     return res.status(404).end()
   } catch (error) {
     return res.status(500).json({
@@ -90,7 +86,7 @@ app.post('/persons', async (req, res) => {
       return res.status(400).json({
         error: 'Missing fields'
       }).end()
-    } 
+    }
     const namePhoneTaken = await Person.find({
        $or: [ { name : newPerson.name }, { phone : newPerson.number }]
       })
@@ -100,9 +96,8 @@ app.post('/persons', async (req, res) => {
       }).end()
     }
     const newRegister = new Person (newPerson)
-    const saved = await newRegister.save() 
-    return res.status(201).json(saved)
-    
+    const saved = await newRegister.save()
+    return res.status(201).send(saved)
   } catch (error) {
     return res.status(500).json({
       error: error.message
@@ -119,17 +114,15 @@ app.put('/persons/:id', async (req, res) => {
         error: 'Missing fields'
       })
     }
-    const updated = Person.findByIdAndUpdate(updatedPerson.id, updatedPerson, {new : true})
-    
+    const updated = await Person.findByIdAndUpdate(updatedPerson.id, updatedPerson, { new : true })
     if (!updated) {
       return res.status(400).json({
         error: `Person with id ${updatedPerson.id} not found`
       })
     }
-    
-    return res.status(200).send(updatedPerson)
-    
+    return res.status(200).send(updated)
   } catch (error) {
+    console.log(error)
     return res.status(500).json({
       error: error.message
     })
@@ -137,12 +130,12 @@ app.put('/persons/:id', async (req, res) => {
 })
 
 const errorHandler = (error, request, response, next) => {
-  console.error(error.message)
+  console.error(error.message, request)
 
   if (error.name === 'CastError') {
-    return response.status(400).send({ error: 'malformatted id' })
+    return response.status(400).json({ error: 'malformatted id' })
   } else if (error.name === 'ValidationError') {
-    return response.status(400).json({ error: error.message })  
+    return response.status(400).json({ error: error.message })
   }
   next(error)
 }
